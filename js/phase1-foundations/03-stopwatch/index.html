@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stopwatch</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+    h1 { margin-top: 40px; font-weight: 300; letter-spacing: 2px; }
+    .time { font-size: 6rem; font-family: monospace; font-variant-numeric: tabular-nums; margin: 20px 0; text-shadow: 0 0 30px rgba(0,212,170,0.3); }
+    .controls { display: flex; gap: 16px; margin-bottom: 30px; }
+    button { border: none; padding: 16px 32px; font-size: 1.1rem; border-radius: 8px; cursor: pointer; min-width: 120px; transition: transform 0.1s, box-shadow 0.1s; }
+    button:active { transform: scale(0.97); }
+    #start { background: #28a745; color: white; }
+    #start:hover { background: #1e7e34; box-shadow: 0 0 20px rgba(40,167,69,0.4); }
+    #pause { background: #ffc107; color: #1a1a2e; }
+    #pause:hover { background: #e0a800; box-shadow: 0 0 20px rgba(255,193,7,0.4); }
+    #reset { background: #dc3545; color: white; }
+    #reset:hover { background: #c82333; box-shadow: 0 0 20px rgba(220,53,69,0.4); }
+    #lap { background: #007bff; color: white; }
+    #lap:hover { background: #0056b3; box-shadow: 0 0 20px rgba(0,123,255,0.4); }
+    .laps { width: 100%; max-width: 400px; }
+    .lap-item { display: flex; justify-content: space-between; padding: 10px 16px; background: rgba(255,255,255,0.05); margin-bottom: 8px; border-radius: 6px; font-family: monospace; }
+    .lap-item:nth-child(odd) { background: rgba(255,255,255,0.08); }
+  </style>
+</head>
+<body>
+  <h1>Stopwatch</h1>
+  <div class="time" id="time">00:00.00</div>
+  <div class="controls">
+    <button id="start">Start</button>
+    <button id="pause" disabled>Pause</button>
+    <button id="lap" disabled>Lap</button>
+    <button id="reset" disabled>Reset</button>
+  </div>
+  <div class="laps" id="laps"></div>
+  <script>
+    const timeEl = document.getElementById('time');
+    const lapsEl = document.getElementById('laps');
+    const startBtn = document.getElementById('start');
+    const pauseBtn = document.getElementById('pause');
+    const lapBtn = document.getElementById('lap');
+    const resetBtn = document.getElementById('reset');
+    let startTime = 0, elapsed = 0, timerId = null, laps = [];
+
+    function format(ms) {
+      const m = Math.floor(ms / 60000);
+      const s = Math.floor((ms % 60000) / 1000);
+      const cs = Math.floor((ms % 1000) / 10);
+      return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${cs.toString().padStart(2,'0')}`;
+    }
+
+    function tick() { timeEl.textContent = format(Date.now() - startTime + elapsed); }
+
+    function setState(running) {
+      startBtn.disabled = running; pauseBtn.disabled = !running;
+      lapBtn.disabled = !running; resetBtn.disabled = !running && elapsed === 0 && laps.length === 0;
+    }
+
+    startBtn.onclick = () => { startTime = Date.now(); timerId = setInterval(tick, 10); setState(true); };
+    pauseBtn.onclick = () => { clearInterval(timerId); elapsed += Date.now() - startTime; setState(false); };
+    resetBtn.onclick = () => { clearInterval(timerId); elapsed = 0; laps = []; timeEl.textContent = '00:00.00'; lapsEl.innerHTML = ''; setState(false); };
+    lapBtn.onclick = () => {
+      const now = Date.now(); const total = now - startTime + elapsed;
+      laps.push(total);
+      const div = document.createElement('div'); div.className = 'lap-item';
+      div.innerHTML = `<span>Lap ${laps.length}</span><span>${format(total)}</span>`;
+      lapsEl.prepend(div);
+    };
+  </script>
+</body>
+</html>

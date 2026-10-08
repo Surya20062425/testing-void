@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pomodoro Timer</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+    h1 { margin-top: 40px; font-weight: 300; letter-spacing: 2px; }
+    .timer { position: relative; width: 280px; height: 280px; margin: 40px 0; }
+    svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    circle.bg { fill: none; stroke: rgba(255,255,255,0.1); stroke-width: 8; }
+    circle.progress { fill: none; stroke: #00d4aa; stroke-width: 8; stroke-linecap: round; stroke-dasharray: 754; stroke-dashoffset: 0; transition: stroke-dashoffset 1s linear, stroke 0.3s; }
+    .time { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 3.5rem; font-family: monospace; font-variant-numeric: tabular-nums; }
+    .mode { text-transform: uppercase; letter-spacing: 3px; font-size: 0.85rem; color: #888; margin-bottom: 8px; }
+    .controls { display: flex; gap: 16px; margin-bottom: 30px; }
+    button { border: none; padding: 14px 28px; font-size: 1rem; border-radius: 8px; cursor: pointer; min-width: 100px; transition: transform 0.1s, box-shadow 0.1s; }
+    button:active { transform: scale(0.97); }
+    #start { background: #28a745; color: white; }
+    #start:hover { background: #1e7e34; box-shadow: 0 0 20px rgba(40,167,69,0.4); }
+    #pause { background: #ffc107; color: #1a1a2e; }
+    #pause:hover { background: #e0a800; box-shadow: 0 0 20px rgba(255,193,7,0.4); }
+    #reset { background: #dc3545; color: white; }
+    #reset:hover { background: #c82333; box-shadow: 0 0 20px rgba(220,53,69,0.4); }
+    .settings { background: rgba(255,255,255,0.05); padding: 24px; border-radius: 12px; width: 100%; max-width: 400px; }
+    .setting { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .setting:last-child { margin-bottom: 0; }
+    label { font-size: 1rem; }
+    input[type="number"] { width: 70px; padding: 8px; border: 1px solid #444; background: #1a1a2e; color: #eee; border-radius: 6px; text-align: center; }
+    input[type="number"]:focus { outline: none; border-color: #00d4aa; }
+    .audio-test { background: #007bff; color: white; padding: 10px 20px; border-radius: 6px; cursor: pointer; border: none; width: 100%; margin-top: 16px; }
+    .audio-test:hover { background: #0056b3; }
+    .session-count { text-align: center; margin-top: 20px; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>Pomodoro Timer</h1>
+  <div class="mode" id="mode-label">Focus</div>
+  <div class="timer">
+    <svg viewBox="0 0 120 120">
+      <circle class="bg" cx="60" cy="60" r="58"></circle>
+      <circle class="progress" id="progress" cx="60" cy="60" r="58"></circle>
+    </svg>
+    <div class="time" id="time">25:00</div>
+  </div>
+  <div class="controls">
+    <button id="start">Start</button>
+    <button id="pause" disabled>Pause</button>
+    <button id="reset">Reset</button>
+  </div>
+  <div class="settings">
+    <div class="setting"><label>Focus (min)</label><input type="number" id="focus-min" value="25" min="1" max="60"></div>
+    <div class="setting"><label>Short Break (min)</label><input type="number" id="short-min" value="5" min="1" max="30"></div>
+    <div class="setting"><label>Long Break (min)</label><input type="number" id="long-min" value="15" min="1" max="60"></div>
+    <div class="setting"><label>Sessions before long break</label><input type="number" id="sessions" value="4" min="2" max="10"></div>
+    <button class="audio-test" id="test-audio">Test Notification Sound</button>
+  </div>
+  <div class="session-count">Completed sessions: <span id="session-count">0</span></div>
+  <script>
+    const timeEl = document.getElementById('time');
+    const progressEl = document.getElementById('progress');
+    const modeLabel = document.getElementById('mode-label');
+    const startBtn = document.getElementById('start');
+    const pauseBtn = document.getElementById('pause');
+    const resetBtn = document.getElementById('reset');
+    const sessionCountEl = document.getElementById('session-count');
+    const RADIUS = 58;
+    const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+    progressEl.style.strokeDasharray = CIRCUMFERENCE;
+
+    let timerId = null;
+    let timeLeft = 25 * 60;
+    let totalTime = 25 * 60;
+    let isRunning = false;
+    let mode = 'focus'; // focus, short, long
+    let sessions = 0;
+    let completedSessions = parseInt(localStorage.getItem('pomodoro_sessions') || '0');
+    sessionCountEl.textContent = completedSessions;
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq, duration, type = 'sine') {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+    function playComplete() { playTone(523.25, 0.2); setTimeout(() => playTone(659.25, 0.2), 150); setTimeout(() => playTone(783.99, 0.3), 300); }
+    function playBreak() { playTone(392, 0.4, 'triangle'); setTimeout(() => playTone(523.25, 0.4, 'triangle'), 200); }
+
+    function format(t) { const m = Math.floor(t/60); const s = t%60; return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`; }
+
+    function updateDisplay() {
+      timeEl.textContent = format(timeLeft);
+      const offset = CIRCUMFERENCE * (1 - timeLeft / totalTime);
+      progressEl.style.strokeDashoffset = offset;
+      progressEl.style.stroke = mode === 'focus' ? '#00d4aa' : mode === 'short' ? '#ffc107' : '#007bff';
+    }
+
+    function setMode(m) {
+      mode = m;
+      const times = { focus: 25, short: 5, long: 15 };
+      const mins = parseInt(document.getElementById(`${m}-min`)?.value || times[m]);
+      totalTime = timeLeft = mins * 60;
+      modeLabel.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+      updateDisplay();
+    }
+
+    function tick() {
+      if (timeLeft > 0) { timeLeft--; updateDisplay(); }
+      else { complete(); }
+    }
+
+    function complete() {
+      clearInterval(timerId); isRunning = false;
+      setState(false);
+      if (mode === 'focus') {
+        playComplete();
+        completedSessions++; sessions++;
+        sessionCountEl.textContent = completedSessions;
+        localStorage.setItem('pomodoro_sessions', completedSessions);
+        if (sessions >= parseInt(document.getElementById('sessions').value)) { setMode('long'); sessions = 0; }
+        else { setMode('short'); }
+      } else {
+        playBreak(); setMode('focus');
+      }
+    }
+
+    function setState(running) {
+      isRunning = running;
+      startBtn.disabled = running; pauseBtn.disabled = !running;
+    }
+
+    function getSettings() {
+      return {
+        focus: parseInt(document.getElementById('focus-min').value) || 25,
+        short: parseInt(document.getElementById('short-min').value) || 5,
+        long: parseInt(document.getElementById('long-min').value) || 15,
+        sessions: parseInt(document.getElementById('sessions').value) || 4
+      };
+    }
+
+    ['focus-min','short-min','long-min','sessions'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => {
+        if (!isRunning && mode === id.replace('-min','')) setMode(mode);
+      });
+    });
+
+    startBtn.onclick = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); timerId = setInterval(tick, 1000); setState(true); };
+    pauseBtn.onclick = () => { clearInterval(timerId); setState(false); };
+    resetBtn.onclick = () => { clearInterval(timerId); setState(false); sessions = 0; setMode('focus'); };
+    document.getElementById('test-audio').onclick = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); playComplete(); };
+
+    updateDisplay();
+    if ('Notification' in window) Notification.requestPermission();
+  </script>
+</body>
+</html>

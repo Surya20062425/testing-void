@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drag-and-Drop Kanban Board</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { max-width: 1200px; margin: 0 auto; padding: 20px; background: #f8f9fa; }
+    h1 { text-align: center; color: #2c3e50; margin-bottom: 32px; }
+    .board { display: grid; gap: 24px; }
+    @media (min-width: 768px) { .board { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); } }
+    .column { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 24px; min-height: 400px; }
+    .column h2 { margin: 0 0 20px; padding-bottom: 12px; border-bottom: 2px solid #e9ecef; font-size: 1.25rem; }
+    .column h2[data-status="todo"] { color: #e74c3c; }
+    .column h2[data-status="inprogress"] { color: #f39c12; }
+    .column h2[data-status="done"] { color: #27ae60; }
+    .card { background: #f1f2f6; border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: grab; transition: transform 0.1s, box-shadow 0.1s; }
+    .card:active { cursor: grabbing; }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .card h3 { font-size: 0.9rem; margin: 0 0 4px; }
+    .card p { font-size: 0.85rem; color: #666; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+    .actions { display: flex; gap: 6px; margin-top: 8px; }
+    .action-btn { background: none; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
+    .action-btn:hover { opacity: 0.8; }
+    .action-btn.delete { color: #e74c3c; }
+    .action-btn.move { color: #f39c12; }
+    .empty { text-align: center; color: #999; padding: 20px; }
+    .nojs { color: #e74c3c; padding: 20px; text-align: center; }
+    .sortable-ghost { opacity: 0; transition: opacity 0.1s; }
+    .dragging { border: 2px dashed #3498db; background: rgba(52, 152, 219, 0.1); }
+  </style>
+</head>
+<body>
+  <h1>Kanban Board</h1>
+  <p class="nojs" id="nojs">JavaScript required for drag-and-drop functionality.</p>
+  <div class="board" id="board">
+    <!-- Columns will be rendered by JS -->
+  </div>
+
+  <script>
+    // ===== Kanban Board Implementation =====
+    const columnsData = [
+      { id: 'todo', title: 'To Do', color: '#e74c3c', limit: 5 },
+      { id: 'inprogress', title: 'In Progress', color: '#f39c12', limit: 3 },
+      { id: 'done', title: 'Done', color: '#27ae60', limit: 10 }
+    ];
+
+    const initialCards = [
+      { id: 1, title: 'Project planning', status: 'todo' },
+      { id: 2, title: 'Design mockups', status: 'todo' },
+      { id: 3, title: 'Set up repo', status: 'todo' },
+      { id: 4, title: 'Write README', status: 'todo' },
+      { id: 5, title: 'Set up CI/CD', status: 'inprogress' },
+      { id: 6, title: 'Write tests', status: 'inprogress' },
+      { id: 7, title: 'Fix bugs', status: 'done' },
+      { id: 8, title: 'Deploy to production', status: 'done' },
+      { id: 9, title: 'Code review', status: 'todo' },
+    ];
+
+    // ===== DOM Elements =====
+    const board = document.getElementById('board');
+    const nojs = document.getElementById('nojs');
+
+    // ===== Render Columns =====
+    function renderColumns() {
+      board.innerHTML = '';
+      columnsData.forEach(col => {
+        const cardCount = document.querySelectorAll(`[data-column="${col.id}"]`).length;
+        const columnHTML = `
+          <div class="column" data-column="${col.id}" style="border-left: 4px solid ${col.color};">
+            <h2 data-status="${col.id}" style="color: ${col.color};">${col.title}</h2>
+            <div class="cards" id="cards-${col.id}">
+              ${initialCards.filter(c => c.status === col.id).map(card => `
+                <div class="card draggable" draggable="true" data-id="${card.id}" data-column="${col.id}" style="border-left: 4px solid ${col.color};">
+                  <h3>${card.title}</h3>
+                  <p>ID: ${card.id}</p>
+                  <div class="actions">
+                    <button class="action-btn delete" onclick="event.stopPropagation(); removeCard(${card.id})">×</button>
+                    <button class="action-btn move" onclick="event.stopPropagation(); moveCard(${card.id})">↑</button>
+                  </div>
+                </div>
+              `).join('')}
+              ${cardCount === 0 ? `<div class="empty">Drag cards here</div>` : ''}
+            </div>
+          </div>`;
+        board.insertAdjacentHTML('beforeend', columnHTML);
+      });
+    }
+
+    // ===== Drag and Drop =====
+    let draggedCard = null;
+    let dragColumn = null;
+
+    document.addEventListener('dragstart', e => {
+      if (e.target.classList.contains('draggable')) {
+        draggedCard = e.target;
+        setTimeout(() => draggedCard.classList.add('dragging'), 0);
+      }
+    });
+
+    document.addEventListener('dragend', e => {
+      if (e.target.classList.contains('draggable')) {
+        draggedCard.classList.remove('dragging');
+        draggedCard = null;
+        dragColumn = null;
+      }
+    });
+
+    document.addEventListener('dragover', e => {
+      e.preventDefault();
+      const overElement = document.elementFromPoint(e.clientX, e.clientY);
+      if (!overElement) return;
+      
+      const column = overElement.closest('.column');
+      if (!column || column === dragColumn) return;
+      
+      const currentDragging = document.querySelector('.dragging');
+      if (!currentDragging) return;
+      
+      const afterElement = getElementAtPoint(column, e.clientX, e.clientY);
+      
+      const columnId = column.dataset.column;
+      const cardsContainer = document.getElementById(`cards-${columnId}`);
+      
+      if (afterElement) {
+        cardsContainer.insertBefore(currentDragging, afterElement);
+      } else {
+        cardsContainer.appendChild(currentDragging);
+      }
+      
+      updateCardStatus(currentDragging);
+    });
+
+    function getElementAtPoint(container, x, y) {
+      const elements = container.querySelectorAll('.card, .empty');
+      let closestElement = null;
+      let closestDist = Infinity;
+      
+      elements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        const dx = x - rect.left - rect.width / 2;
+        const dy = y - rect.top - rect.height / 2;
+        const dist = dx * dx + dy * dy;
+        if (dist < closestDist && dist < (rect.width * rect.width + rect.height * rect.height) / 4) {
+          closestDist = dist;
+          closestElement = el;
+        }
+      });
+      
+      return closestElement;
+    }
+
+    // ===== Card Management =====
+    function removeCard(id) {
+      const card = document.querySelector(`[data-id="${id}"]`);
+      if (card) card.remove();
+      updateColumnLimits();
+    }
+
+    function moveCard(id) {
+      const card = document.querySelector(`[data-id="${id}"]`);
+      if (!card) return;
+      const currentCol = card.dataset.column;
+      const currentIdx = columnsData.findIndex(c => c.id === currentCol);
+      const nextIdx = (currentIdx + 1) % columnsData.length;
+      const nextCol = columnsData[nextIdx].id;
+      
+      // Move card in DOM
+      card.dataset.column = nextCol;
+      const currentCards = document.querySelectorAll(`[data-column="${currentCol}"] .card`);
+      const nextCards = document.querySelectorAll(`[data-column="${nextCol}"] .card`);
+      
+      // Simple append to next column
+      const nextContainer = document.getElementById(`cards-${nextCol}`);
+      if (nextContainer.contains(card)) {
+        // Already there, move to end
+        nextContainer.appendChild(card);
+      } else {
+        // Move from current to next
+        if (currentCards.length > 0) currentCards[0].parentNode.removeChild(card);
+        nextContainer.appendChild(card);
+      }
+      
+      updateColumnLimits();
+    }
+
+    function updateCardStatus(card) {
+      const newCol = card.dataset.column;
+      const newStatus = newCol; // Maps directly to column id
+      // Could update data attributes or localStorage here
+    }
+
+    function updateColumnLimits() {
+      columnsData.forEach(col => {
+        const cards = document.querySelectorAll(`[data-column="${col.id}"] .card`);
+        const count = cards.length;
+        const limit = col.limit;
+        // Visual feedback
+        const column = document.querySelector(`[data-column="${col.id}"]`);
+        if (count >= limit) {
+          column.style.boxShadow = `0 0 20px rgba(${hexToRgb(col.color)}, 0.4)`;
+        } else {
+          column.style.boxShadow = 'none';
+        }
+      });
+    }
+
+    function hexToRgb(hex) {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0, 0, 0';
+    }
+
+    // ===== Initialize =====
+    renderColumns();
+    updateColumnLimits();
+
+    // Make functions globally accessible for inline handlers
+    window.removeCard = removeCard;
+    window.moveCard = moveCard;
+  </script>
+</body>
+</html>

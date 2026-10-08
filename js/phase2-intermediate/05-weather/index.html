@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather App</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { max-width: 400px; margin: 40px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+    .app { background: rgba(255,255,255,0.95); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); padding: 32px; backdrop-filter: blur(10px); }
+    .search { display: flex; gap: 8px; margin-bottom: 24px; }
+    input { flex: 1; padding: 14px; border: 2px solid #e8e8e8; border-radius: 10px; font-size: 1rem; }
+    input:focus { outline: none; border-color: #667eea; }
+    button.search { background: #667eea; color: white; border: none; padding: 14px 24px; border-radius: 10px; cursor: pointer; }
+    button.search:hover { background: #5568d3; }
+    button.search:disabled { background: #ccc; }
+    .weather { display: none; text-align: center; }
+    .weather.show { display: block; animation: fadeIn 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .city { font-size: 1.5rem; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .temp { font-size: 4rem; font-weight: 300; color: #667eea; margin: 16px 0; }
+    .desc { text-transform: capitalize; color: #666; margin-bottom: 24px; }
+    .details { display: flex; justify-content: center; gap: 32px; color: #555; }
+    .detail { display: flex; flex-direction: column; align-items: center; }
+    .detail-value { font-size: 1.5rem; font-weight: 600; color: #333; }
+    .detail-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .error { color: #dc3545; text-align: center; margin-top: 16px; display: none; }
+    .error.show { display: block; }
+    .loading { text-align: center; color: #667eea; display: none; }
+    .loading.show { display: block; }
+    .spinner { border: 3px solid #e8e8e8; border-top-color: #667eea; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 12px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="search">
+      <input type="text" id="city-input" placeholder="Enter city name..." autocomplete="off">
+      <button class="search" id="search-btn">Search</button>
+    </div>
+    <div class="loading" id="loading"><div class="spinner"></div>Fetching weather...</div>
+    <div class="error" id="error"></div>
+    <div class="weather" id="weather">
+      <div class="city" id="city"></div>
+      <div class="temp" id="temp"></div>
+      <div class="desc" id="desc"></div>
+      <div class="details">
+        <div class="detail"><span class="detail-value" id="humidity"></span><span class="detail-label">Humidity</span></div>
+        <div class="detail"><span class="detail-value" id="wind"></span><span class="detail-label">Wind</span></div>
+        <div class="detail"><span class="detail-value" id="pressure"></span><span class="detail-label">Pressure</span></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const API_KEY = 'YOUR_API_KEY'; // Replace with OpenWeatherMap API key
+    const BASE_URL = 'https://api.openweathermap.org/data/2.5/weather';
+    const input = document.getElementById('city-input');
+    const searchBtn = document.getElementById('search-btn');
+    const loading = document.getElementById('loading');
+    const error = document.getElementById('error');
+    const weather = document.getElementById('weather');
+
+    async function fetchWeather(city) {
+      loading.classList.add('show');
+      error.classList.remove('show');
+      weather.classList.remove('show');
+      searchBtn.disabled = true;
+
+      try {
+        const res = await fetch(`${BASE_URL}?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`);
+        if (!res.ok) throw new Error(res.status === 404 ? 'City not found' : 'Failed to fetch weather');
+        const data = await res.json();
+        displayWeather(data);
+      } catch (e) {
+        error.textContent = e.message;
+        error.classList.add('show');
+      } finally {
+        loading.classList.remove('show');
+        searchBtn.disabled = false;
+      }
+    }
+
+    function displayWeather(data) {
+      document.getElementById('city').textContent = `${data.name}, ${data.sys.country}`;
+      document.getElementById('temp').textContent = `${Math.round(data.main.temp)}°C`;
+      document.getElementById('desc').textContent = data.weather[0].description;
+      document.getElementById('humidity').textContent = `${data.main.humidity}%`;
+      document.getElementById('wind').textContent = `${data.wind.speed} m/s`;
+      document.getElementById('pressure').textContent = `${data.main.pressure} hPa`;
+      weather.classList.add('show');
+    }
+
+    searchBtn.addEventListener('click', () => {
+      const city = input.value.trim();
+      if (city) fetchWeather(city);
+    });
+
+    input.addEventListener('keypress', e => { if (e.key === 'Enter') searchBtn.click(); });
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        fetch(`${BASE_URL}?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&appid=${API_KEY}&units=metric`)
+          .then(r => r.json()).then(displayWeather).catch(() => {});
+      }, () => {});
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unit Test Suite (Vitest)</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { max-width: 900px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
+    h1 { color: #1a1a2e; margin: 0 0 24px; }
+    .test-runner { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 32px; }
+    .test-list { display: grid; gap: 12px; }
+    .test-item { padding: 16px; border-radius: 8px; border: 2px solid #e8e8e8; transition: all 0.2s; cursor: pointer; }
+    .test-item:hover { border-color: #007bff; background: #f6f8fa; }
+    .test-item.passed { border-color: #28a745; background: #d4edda; }
+    .test-item.failed { border-color: #dc3545; background: #f8d7da; }
+    .test-item.running { border-color: #6c757d; background: #ffeeba; }
+    .test-name { font-weight: 500; color: #2c3e50; }
+    .test-meta { font-size: 0.85rem; color: #666; margin-top: 4px; }
+    .summary { margin-top: 24px; padding-top: 24px; border-top: 2px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; }
+    .passed-count, .failed-count { font-weight: 600; }
+    .controls { margin-bottom: 24px; }
+    .btn { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+    .btn:hover { background: #0056b3; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .progress-bar { width: 100%; height: 8px; background: #e8e8e8; border-radius: 4px; overflow: hidden; margin-top: 12px; }
+    .progress-fill { height: 100%; width: 0%; background: #007bff; transition: width 0.3s; }
+  </style>
+</head>
+<body>
+  <h1>Unit Test Suite</h1>
+  <div class="controls">
+    <button class="btn" id="run-all">Run All Tests</button>
+    <button class="btn" id="stop-all" disabled>Stop</button>
+  </div>
+  <div class="test-runner">
+    <div class="test-list" id="test-list"></div>
+    <div class="summary" id="summary" style="display:none">
+      <span>Passed: <span class="passed-count">0</span></span>
+      <span>Failed: <span class="failed-count">0</span></span>
+    </div>
+  </div>
+  <script type="module">
+    // ===== Mock Test Framework (Vitest-like) =====
+    const tests = [];
+    let running = false;
+    let passed = 0;
+    let failed = 0;
+    let currentIndex = 0;
+
+    // ===== Test Definitions =====
+    function test(name, fn) {
+      tests.push({ name, fn, id: tests.length });
+      renderTests();
+    }
+
+    // ===== Utility Assertions =====
+    function assert(condition, message) {
+      if (!condition) throw new Error(message || 'Assertion failed');
+    }
+
+    function assertEquals(actual, expected, message) {
+      assert(actual === expected, `${message || 'Expected'} to equal ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    }
+
+    function assertThrows(fn, message) {
+      let threw = false;
+      try { fn(); } catch (e) { threw = true; }
+      assert(threw, `${message || 'Expected'} function to throw`);
+    }
+
+    // ===== DOM Utilities =====
+    function el(tag, props = {}, ...children) {
+      const e = document.createElement(tag);
+      Object.keys(props).forEach(k => e[k] = props[k]);
+      children.forEach(c => {
+        if (typeof c === 'string' || typeof c === 'number') e.textContent = c;
+        else if (c && typeof c === 'object') e.appendChild(c);
+      });
+      return e;
+    }
+
+    // ===== Test Infrastructure =====
+    function renderTests() {
+      const list = document.getElementById('test-list');
+      list.innerHTML = '';
+      
+      tests.slice(0, 20).forEach((test, i) => {
+        const item = el('div', { className: 'test-item', 'data-id': test.id }, `
+          <div class="test-name">${test.name}</div>
+          <div class="test-meta">${test.pending ? 'pending' : 'not run yet'}</div>
+        `);
+        
+        item.addEventListener('click', () => runTest(i));
+        list.appendChild(item);
+      });
+    }
+
+    function runTest(i) {
+      const test = tests[i];
+      if (!test) return;
+      
+      const item = document.querySelector(`[data-id="${test.id}"]`);
+      if (!item) return;
+      
+      item.className = 'test-item running';
+      
+      try {
+        test.fn();
+        item.className = 'test-item passed';
+        passed++;
+      } catch (e) {
+        item.className = 'test-item failed';
+        failed++;
+        item.querySelector('.test-meta').textContent = `Error: ${e.message}`;
+      }
+      
+      document.getElementById('passed-count').textContent = passed;
+      document.getElementById('failed-count').textContent = failed;
+      updateSummary();
+    }
+
+    function updateSummary() {
+      const summary = document.getElementById('summary');
+      summary.style.display = 'block';
+      document.getElementById('passed-count').textContent = passed;
+      document.getElementById('failed-count').textContent = failed;
+    }
+
+    // ===== Built-in Tests =====
+    // Math utilities
+    function sum(a, b) { return a + b; }
+    
+    test('add function returns correct sum', () => {
+      assertEquals(sum(2, 3), 5);
+      assertEquals(sum(-1, 1), 0);
+      assertEquals(sum(0, 0), 0);
+    });
+
+    test('add function handles edge cases', () => {
+      assertEquals(sum(1.5, 2.5), 4);
+      assertEquals(sum(100, -50), 50);
+    });
+
+    // String utilities
+    function capitalize(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
+
+    test('capitalize transforms string correctly', () => {
+      assertEquals(capitalize('hello'), 'Hello');
+      assertEquals(capitalize('JAVASCRIPT'), 'JAVASCRIPT');
+      assertEquals(capitalize(''), '');
+    });
+
+    test('capitalize handles edge cases', () => {
+      assertEquals(capitalize('a'), 'A');
+      assertEquals(capitalize('  space'), '  space');
+    });
+
+    // Array utilities
+    function filter(arr, fn) {
+      const result = [];
+      for (let i = 0; i < arr.length; i++) {
+        if (fn(arr[i], i, arr)) result.push(arr[i]);
+      }
+      return result;
+    }
+
+    test('filter returns elements matching predicate', () => {
+      const nums = [1, 2, 3, 4, 5];
+      const evens = filter(nums, n => n % 2 === 0);
+      assertEquals(evens.length, 2);
+      assertEquals(evens[0], 2);
+      assertEquals(evens[1], 4);
+    });
+
+    test('filter returns empty array for no matches', () => {
+      const nums = [1, 3, 5];
+      const evens = filter(nums, n => n % 2 === 0);
+      assertEquals(evens.length, 0);
+    });
+
+    test('filter does not mutate original array', () => {
+      const nums = [1, 2, 3];
+      const evens = filter(nums, n => n % 2 === 0);
+      assertEquals(nums.length, 3);
+      assertEquals(nums[0], 1);
+    });
+
+    // Object utilities
+    function keys(obj) {
+      const result = [];
+      for (const k in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, k)) result.push(k);
+      }
+      return result;
+    }
+
+    test('keys returns own property names', () => {
+      const obj = { a: 1, b: 2, c: 3 };
+      assertEquals(keys(obj).sort().join(','), 'a,b,c');
+    });
+
+    test('keys ignores inherited properties', () => {
+      function Parent() { this.parentProp = true; }
+      Parent.prototype.inherited = 'yes';
+      const child = new Parent();
+      assertEquals(keys(child).length, 1);
+    });
+
+    // DOM utilities
+    function createElement(tag, props, ...children) {
+      const e = document.createElement(tag);
+      if (props.className) e.className = props.className;
+      if (props.id) e.id = props.id;
+      children.forEach(c => {
+        if (typeof c === 'string' || typeof c === 'number') e.textContent = c;
+        else if (c && typeof c === 'object') e.appendChild(c);
+      });
+      return e;
+    }
+
+    test('createElement creates element with props', () => {
+      const div = createElement('div', { className: 'test', id: 'my-div' }, 'Hello');
+      assertEquals(div.tagName, 'DIV');
+      assertEquals(div.className, 'test');
+      assertEquals(div.id, 'my-div');
+      assertEquals(div.textContent, 'Hello');
+    });
+
+    test('createElement handles nested children', () => {
+      const span = createElement('span', {}, 'Nested');
+      const div = createElement('div', {}, span);
+      assert(div.innerHTML.includes('Nested'));
+    });
+
+    // Async test
+    test('async test with done callback', (done) => {
+      setTimeout(() => {
+        try {
+          assertEquals(1 + 1, 2);
+          done();
+        } catch (e) {
+          done(e);
+        }
+      }, 10);
+    });
+
+    // Render test
+    test('DOM manipulation works correctly', () => {
+      const container = document.createElement('div');
+      container.innerHTML = '<span>test</span>';
+      assertEquals(container.querySelector('span').textContent, 'test');
+    });
+
+    // ===== Initialize =====
+    renderTests();
+    document.getElementById('run-all').onclick = () => {
+      if (running) return;
+      running = true;
+      document.getElementById('run-all').disabled = true;
+      document.getElementById('stop-all').disabled = false;
+      runNextTest();
+    };
+
+    document.getElementById('stop-all').onclick = () => {
+      running = false;
+      document.getElementById('run-all').disabled = false;
+      document.getElementById('stop-all').disabled = true;
+    };
+
+    function runNextTest() {
+      if (!running || currentIndex >= tests.length) {
+        running = false;
+        document.getElementById('run-all').disabled = false;
+        document.getElementById('stop-all').disabled = true;
+        updateSummary();
+        return;
+      }
+      
+      const test = tests[currentIndex];
+      currentIndex++;
+      
+      try {
+        test.fn();
+        const item = document.querySelector(`[data-id="${test.id}"]`);
+        if (item) item.className = 'test-item passed';
+        passed++;
+      } catch (e) {
+        const item = document.querySelector(`[data-id="${test.id}"]`);
+        if (item) item.className = 'test-item failed';
+        failed++;
+      }
+      
+      document.getElementById('passed-count').textContent = passed;
+      document.getElementById('failed-count').textContent = failed;
+      updateSummary();
+      setTimeout(runNextTest, 50);
+    }
+
+    updateSummary();
+  </script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculator</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+    .calc { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 20px; width: 320px; }
+    .display { background: #1a1a2e; color: #00d4aa; font-size: 2.5rem; text-align: right; padding: 20px; border-radius: 8px; margin-bottom: 16px; font-family: monospace; overflow: hidden; }
+    .btn-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    button { border: none; padding: 20px; font-size: 1.2rem; border-radius: 8px; cursor: pointer; transition: transform 0.1s, background 0.1s; }
+    button:active { transform: scale(0.95); }
+    .num { background: #e8e8e8; }
+    .num:hover { background: #dcdcdc; }
+    .op { background: #007bff; color: white; }
+    .op:hover { background: #0056b3; }
+    .eq { background: #28a745; color: white; grid-column: span 2; }
+    .eq:hover { background: #1e7e34; }
+    .clr { background: #dc3545; color: white; }
+    .clr:hover { background: #c82333; }
+  </style>
+</head>
+<body>
+  <div class="calc">
+    <div class="display" id="display">0</div>
+    <div class="btn-grid">
+      <button class="clr" data-action="clear">C</button>
+      <button class="op" data-action="operator" data-value="/">/</button>
+      <button class="op" data-action="operator" data-value="*">*</button>
+      <button class="op" data-action="operator" data-value="-">-</button>
+      <button class="num" data-value="7">7</button>
+      <button class="num" data-value="8">8</button>
+      <button class="num" data-value="9">9</button>
+      <button class="op" data-action="operator" data-value="+">+</button>
+      <button class="num" data-value="4">4</button>
+      <button class="num" data-value="5">5</button>
+      <button class="num" data-value="6">6</button>
+      <button class="op" data-action="operator" data-value="%">%</button>
+      <button class="num" data-value="1">1</button>
+      <button class="num" data-value="2">2</button>
+      <button class="num" data-value="3">3</button>
+      <button class="eq" data-action="equals">=</button>
+      <button class="num" data-value="0">0</button>
+      <button class="num" data-value=".">.</button>
+      <button class="op" data-action="backspace">&larr;</button>
+    </div>
+  </div>
+  <script>
+    const display = document.getElementById('display');
+    let current = '0', previous = '', operator = null, shouldReset = false;
+
+    function updateDisplay() { display.textContent = current.slice(0, 12); }
+
+    function inputNumber(num) {
+      if (shouldReset) { current = num; shouldReset = false; }
+      else { current = current === '0' ? num : current + num; }
+      updateDisplay();
+    }
+
+    function inputOperator(op) {
+      if (operator && !shouldReset) calculate();
+      previous = current;
+      operator = op;
+      shouldReset = true;
+    }
+
+    function calculate() {
+      if (!operator || shouldReset) return;
+      const a = parseFloat(previous), b = parseFloat(current);
+      let result;
+      switch (operator) {
+        case '+': result = a + b; break;
+        case '-': result = a - b; break;
+        case '*': result = a * b; break;
+        case '/': result = b !== 0 ? a / b : 'Error'; break;
+        case '%': result = a % b; break;
+      }
+      current = typeof result === 'number' ? String(Math.round(result * 1e10) / 1e10) : result;
+      operator = null;
+      previous = '';
+      shouldReset = true;
+      updateDisplay();
+    }
+
+    function clearAll() { current = '0'; previous = ''; operator = null; shouldReset = false; updateDisplay(); }
+
+    function backspace() { current = current.length > 1 ? current.slice(0, -1) : '0'; updateDisplay(); }
+
+    document.querySelectorAll('[data-value]').forEach(btn => 
+      btn.addEventListener('click', () => inputNumber(btn.dataset.value)));
+    document.querySelectorAll('[data-action="operator"]').forEach(btn => 
+      btn.addEventListener('click', () => inputOperator(btn.dataset.value)));
+    document.querySelector('[data-action="equals"]').addEventListener('click', calculate);
+    document.querySelector('[data-action="clear"]').addEventListener('click', clearAll);
+    document.querySelector('[data-action="backspace"]').addEventListener('click', backspace);
+    document.addEventListener('keydown', e => {
+      if (/[0-9.]/.test(e.key)) inputNumber(e.key);
+      else if (/[+\-*/%]/.test(e.key)) inputOperator(e.key);
+      else if (e.key === 'Enter' || e.key === '=') calculate();
+      else if (e.key === 'Escape') clearAll();
+      else if (e.key === 'Backspace') backspace();
+    });
+  </script>
+</body>
+</html>
